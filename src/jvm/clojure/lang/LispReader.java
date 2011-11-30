@@ -443,19 +443,68 @@ public static class RegexReader extends AFn{
 }
 
 public static class StringReader extends AFn{
+
+	static int read1WithEOFCheck(Reader r) {
+		int ch = read1(r);
+		if(ch == -1)
+			throw Util.runtimeException("EOF while reading string");
+		return ch;
+	}
+
 	public Object invoke(Object reader, Object doublequote) {
 		StringBuilder sb = new StringBuilder();
-		Reader r = (Reader) reader;
-
-		for(int ch = read1(r); ch != '"'; ch = read1(r))
+		PushbackReader r = (PushbackReader) reader;
+		
+		boolean triple = false;
+		int ch = read1WithEOFCheck(r);
+		if (ch == '"')
 			{
-			if(ch == -1)
-				throw Util.runtimeException("EOF while reading string");
+			// Either an empty string, or the start of a
+			// triple-quoted string.
+			ch = read1(r);
+			if (ch == '"')
+				{
+				triple = true;
+				}
+			else
+				{
+				if(ch != -1)
+					unread(r, ch);
+				return "";
+				}
+			}
+		else
+			unread(r, ch);
+
+		while(true)
+			{
+			ch = read1WithEOFCheck(r);
+
+			// Check for end-of-string
+			if(ch == '"')
+				{
+				if(triple)
+					{
+					ch = read1WithEOFCheck(r);
+					if(ch == '"')
+						{
+						// That's two so far...
+						ch = read1WithEOFCheck(r);
+						if(ch == '"')
+							break;
+						else
+							sb.append("\"\"");
+						}
+					else
+						sb.append('"');
+					}
+				else
+					break;
+				}
+
 			if(ch == '\\')	//escape
 				{
-				ch = read1(r);
-				if(ch == -1)
-					throw Util.runtimeException("EOF while reading string");
+				ch = read1WithEOFCheck(r);
 				switch(ch)
 					{
 					case 't':
@@ -481,7 +530,7 @@ public static class StringReader extends AFn{
 					{
 					ch = read1(r);
 					if (Character.digit(ch, 16) == -1)
-					    throw Util.runtimeException("Invalid unicode escape: \\u" + (char) ch);
+						throw Util.runtimeException("Invalid unicode escape: \\u" + (char) ch);
 					ch = readUnicodeChar((PushbackReader) r, ch, 16, 4, true);
 					break;
 					}
